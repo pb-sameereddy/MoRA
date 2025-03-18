@@ -577,7 +577,7 @@ class SupervisedDataset(Dataset):
             input_key = "context"
 
             def get_input(row):
-                return row[input_key]['contexts'][0]
+                return '\n\n---\n\n'.join(row[input_key]['contexts'])
             
             def get_output(row):
                 return f"{row[response_key]}\nFinal Decision: {row['final_decision']}"
