@@ -645,6 +645,9 @@ def train(
     lr_scheduler_type = 'cosine'
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
     train_data = data_module['train_dataset']
+    eval_data = data_module['eval_dataset']
+    print(f"train_data has: {len(train_data)} samples")
+    print(f"eval_data has: {len(eval_data)} samples")
     data_collator = data_module['data_collator']
     warmup_steps, warmup_ratio = 0, 0.03
 
@@ -672,7 +675,7 @@ def train(
     trainer = TRAINER_CLS(
         model=model,
         train_dataset=train_data,
-        eval_dataset=None,
+        eval_dataset=eval_data,
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,

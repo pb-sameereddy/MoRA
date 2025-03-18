@@ -643,12 +643,6 @@ class SupervisedDataset(Dataset):
         self.sources = sources
         self.targets = targets
 
-    
-            
-
-
-
-
     def __len__(self):
         return len(self.sources)
 
