@@ -322,6 +322,7 @@ def train(
         batch_size: int = 128,
         micro_batch_size: int = 4,
         num_epochs: int = 1,
+        eval_steps: int = 100,
         learning_rate: float = 3e-4,
         lr_scheduler_type: str = 'linear',
         cutoff_len: int = 2048,
@@ -672,10 +673,10 @@ def train(
 
 
     TRAINER_CLS = OurTrainer
+    eval_args = dict(eval_dataset=eval_data, eval_strategy="steps", eval_steps=eval_steps, per_device_eval_batch_size=micro_batch_size, eval_accumulation_steps=2) if eval_data else {}
     trainer = TRAINER_CLS(
         model=model,
         train_dataset=train_data,
-        eval_dataset=eval_data,
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
@@ -706,6 +707,7 @@ def train(
             gradient_checkpointing=grad_checkpoint,
             fsdp='full_shard auto_wrap' if full_ft and not deepspeed and pretrain is None else '',
             fsdp_transformer_layer_cls_to_wrap='LlamaDecoderLayer' if full_ft and not deepspeed and pretrain is None else None,
+            **eval_args,
         ),
         data_collator=data_collator,
     )
