@@ -675,10 +675,11 @@ def train(
 
 
     TRAINER_CLS = OurTrainer
-    eval_args = dict(eval_dataset=eval_data, eval_strategy="steps", eval_steps=eval_steps, per_device_eval_batch_size=micro_batch_size, eval_accumulation_steps=2) if eval_data else {}
+    eval_args = dict(eval_strategy="steps", eval_steps=eval_steps, per_device_eval_batch_size=micro_batch_size, eval_accumulation_steps=2) if eval_data else {}
     trainer = TRAINER_CLS(
         model=model,
         train_dataset=train_data,
+        eval_dataset=eval_data,
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
@@ -695,7 +696,6 @@ def train(
             optim="adamw_torch",
             evaluation_strategy="no",
             save_strategy="steps",
-            eval_steps=None,
             save_steps=save_steps,
             output_dir=output_dir,
             save_total_limit=save_total_limit,
