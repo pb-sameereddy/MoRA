@@ -559,18 +559,29 @@ class SupervisedDataset(Dataset):
         question_key = "query"
         response_key = "response"
         input_key = "query"
-        def get_input(_in):
+
+        def get_input(row):
+            _in = row[input_key]
             if _in.find("\n") == -1:
                 return ""
             return "\n".join(_in.split("\n")[1:])
+
+        def get_output(row):
+            return row[response_key]
+
         if data_path == "meta-math/MetaMathQA":
             list_data_dict = load_dataset("meta-math/MetaMathQA")["train"].to_list()
         elif data_path == "qiaojin/PubMedQA":
             question_key = "question"
             response_key = "long_answer"
             input_key = "context"
-            def get_input(_in):
-                return _in['contexts'][0]
+
+            def get_input(row):
+                return row[input_key]['contexts'][0]
+            
+            def get_output(row):
+                return f"{row[response_key]}\nFinal Decision: {row['final_decision']}"
+            
             list_data_dict = load_dataset("qiaojin/PubMedQA", "pqa_artificial")[
                 "train"
             ].to_list()
@@ -596,8 +607,8 @@ class SupervisedDataset(Dataset):
         list_data_dict = [
             {
                 "instruction": data[question_key].strip(),
-                "input": get_input(data[input_key]),
-                "output": data[response_key],
+                "input": get_input(data),
+                "output": get_output(data),
             }
             for data in list_data_dict
         ]
