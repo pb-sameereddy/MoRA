@@ -317,7 +317,7 @@ class OurTrainer(Trainer):
 def train(
         # model/data params
         base_model: str = "",  # the only required argument
-        data_path: str = "",
+        data_path: str = "", # also required lol
         # training hyperparams
         batch_size: int = 128,
         micro_batch_size: int = 4,
@@ -359,7 +359,7 @@ def train(
         max_samples: int = -1,
         save_total_limit: int = 7,
         new_pad_token: bool = False,
-        save_steps: int = 200,
+        save_steps: int = 500,
         grad_checkpoint: bool = False,
         pretrain: str = None,
         # dora
@@ -381,6 +381,7 @@ def train(
         relora_scheduler: bool = False,
         remora_types: int = 4,
 ):
+    
     global SAVE_PATH
     set_seed(seed)
     gradient_accumulation_steps = batch_size // micro_batch_size
@@ -425,7 +426,7 @@ def train(
 
     if debug:
         # random init
-        config = AutoConfig.from_pretrained(base_model)
+        config = AutoConfig.from_pretrained(base_model, trust_remote_code=True)
         config.num_hidden_layers = 1
         model = MODEL_CLASS(config)
         use_wandb = False
@@ -450,16 +451,23 @@ def train(
             ),
             torch_dtype=torch.bfloat16 if use_bf16 else torch.float16,
             device_map=device_map,
+            trust_remote_code=True,
         )
     else:
         from transformers import BitsAndBytesConfig
         torch_dtype = torch.bfloat16 if use_bf16 else torch.float16
+        load_in_8bit = False if full_ft or (deepspeed and 'ds3' in deepspeed) or use_16bit else True
+
+        if load_in_8bit:
+            print('loading in 8bit')
+            
         model = MODEL_CLASS.from_pretrained(
             base_model,
-            load_in_8bit=False if full_ft or (deepspeed and 'ds3' in deepspeed) or use_16bit else True, # if use zero3 not quantize
+            load_in_8bit=load_in_8bit,
             torch_dtype=torch_dtype,
             device_map=device_map,
             use_flash_attention_2=use_flash_atten,
+            trust_remote_code=True,
         )
 
 
@@ -593,50 +601,71 @@ def train(
         model.model_parallel = True
 
     warmup_ratio = 0
-    if 'meta-math' in data_path:
+
+    def setup_data_args(data_path, base_model, data_length=None, val_split=None):
         class A:
             pass
         data_args = A()
-        data_args.data_path =  'meta-math/MetaMathQA'
-        data_args.data_length = 1000000
-        from training_utils import make_supervised_data_module
-        lr_scheduler_type = 'cosine'
-        save_steps = 1000
+        data_args.data_path = data_path
+        if data_length is not None:
+            data_args.data_length = data_length
+        if val_split is not None:
+            data_args.val_split = val_split
+        data_args.is_chat = False
+        if 'Llama-3' in base_model and 'Instruct' in base_model:
+            data_args.is_chat = True
+        return data_args
+
+    if 'meta-math' in data_path:
+        data_args = setup_data_args('meta-math/MetaMathQA', base_model, data_length=100000, val_split=0.02)
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             base_model,
             model_max_length=512,
-            #padding_side="right",
             padding_side="right",
             use_fast=False,
         )
-        #tokenizer.pad_token = "[PAD]"
-        #tokenizer.padding_side = "left"
         tokenizer.pad_token_id = (
         # NOTE: set this to eos token, set to unk(0) while make output nan
             2  # unk. we want this to be different from the eos token
         )
-        data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
-        train_data = data_module['train_dataset']
-        data_collator = data_module['data_collator']
-        warmup_steps, warmup_ratio = 0, 0.03
-    else:
-        train_data = load_from_disk(data_path)
-        if 'open-instruct-tokenized' in data_path:
-            prev_len = len(train_data)
-            #train_data = train_data.filter(lambda x: max(x['input_ids']) < 32000,num_proc=48)
-            def remap(entry):
-                entry['input_ids'] = [x if x < 32000 else 0 for x in entry['input_ids']]
-                return entry
-            # this sample contain <pad> which is add new token in prev
-            print(f'filter out {prev_len - len(train_data)} samples')
-            if cutoff_len != 2048:
-                def cut_off(entry):
-                    entry['input_ids'] = entry['input_ids'][:cutoff_len]
-                    entry['attention_mask'] = entry['attention_mask'][:cutoff_len]
-                    entry['labels'] = entry['labels'][:cutoff_len]
-                    return entry
-                train_data = train_data.map(cut_off, num_proc=48)
-                train_data = train_data.filter(lambda example: (torch.LongTensor(example['labels']) != -100).any(), num_proc=48)
+    elif data_path == 'qiaojin/PubMedQA':
+        data_args = setup_data_args(data_path, base_model, data_length=100000, val_split=0.02)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            base_model,
+            model_max_length=768,
+            padding_side="right",
+            use_fast=False,
+        )
+        tokenizer.pad_token_id = (
+        # NOTE: set this to eos token, set to unk(0) while make output nan
+            2  # unk. we want this to be different from the eos token
+        )
+    
+    from training_utils import make_supervised_data_module
+    lr_scheduler_type = 'cosine'
+    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
+    train_data = data_module['train_dataset']
+    data_collator = data_module['data_collator']
+    warmup_steps, warmup_ratio = 0, 0.03
+
+    # else:
+    #     train_data = load_from_disk(data_path)
+    #     if 'open-instruct-tokenized' in data_path:
+    #         prev_len = len(train_data)
+    #         #train_data = train_data.filter(lambda x: max(x['input_ids']) < 32000,num_proc=48)
+    #         def remap(entry):
+    #             entry['input_ids'] = [x if x < 32000 else 0 for x in entry['input_ids']]
+    #             return entry
+    #         # this sample contain <pad> which is add new token in prev
+    #         print(f'filter out {prev_len - len(train_data)} samples')
+    #         if cutoff_len != 2048:
+    #             def cut_off(entry):
+    #                 entry['input_ids'] = entry['input_ids'][:cutoff_len]
+    #                 entry['attention_mask'] = entry['attention_mask'][:cutoff_len]
+    #                 entry['labels'] = entry['labels'][:cutoff_len]
+    #                 return entry
+    #             train_data = train_data.map(cut_off, num_proc=48)
+    #             train_data = train_data.filter(lambda example: (torch.LongTensor(example['labels']) != -100).any(), num_proc=48)
 
 
     TRAINER_CLS = OurTrainer

@@ -19,7 +19,9 @@ import transformers
 import wandb
 
 from transformers.utils import logging
+
 logger = logging.get_logger(__name__)
+
 
 def get_scheculer(
     optimizer,
@@ -53,7 +55,9 @@ def get_scheculer(
             last_epoch=last_epoch,
         )
     if scheduler_type == "cosine_restarts":
-        assert restart_warmup_steps is not None, "restart_warmup_steps must be specified for cosine_restarts scheduler"
+        assert (
+            restart_warmup_steps is not None
+        ), "restart_warmup_steps must be specified for cosine_restarts scheduler"
         return get_cosine_schedule_with_multiple_warmups(
             optimizer,
             num_training_steps=num_training_steps,
@@ -68,14 +72,25 @@ def get_scheculer(
     raise NotImplementedError(f"Scheduler {scheduler_type} is not implemented")
 
 
-def get_cyclical_cosine_schedule_with_min_lr(optimizer, num_warmup_steps, num_training_steps, cycle_length, min_lr_ratio=0.1, last_epoch=-1):
-    assert cycle_length is not None or num_training_steps is not None, "You must specify either cycle_length or num_training_steps"
-    
+def get_cyclical_cosine_schedule_with_min_lr(
+    optimizer,
+    num_warmup_steps,
+    num_training_steps,
+    cycle_length,
+    min_lr_ratio=0.1,
+    last_epoch=-1,
+):
+    assert (
+        cycle_length is not None or num_training_steps is not None
+    ), "You must specify either cycle_length or num_training_steps"
+
     if cycle_length is None:
         cycle_length = num_training_steps
 
     if num_training_steps % cycle_length != 0:
-        raise ValueError(f"num_training_steps ({num_training_steps}) must be divisible by cycle_length ({cycle_length})")
+        raise ValueError(
+            f"num_training_steps ({num_training_steps}) must be divisible by cycle_length ({cycle_length})"
+        )
 
     lr_lambda = partial(
         _get_cyclical_cosine_schedule_with_min_lr_lambda,
@@ -98,10 +113,14 @@ def get_cosine_schedule_with_multiple_warmups(
     last_epoch=-1,
 ):
     if restart_every is None:
-        raise ValueError("restart_every must be specified for cosine_restarts scheduler")
+        raise ValueError(
+            "restart_every must be specified for cosine_restarts scheduler"
+        )
 
     if num_training_steps % restart_every != 0:
-        raise ValueError(f"num_training_steps ({num_training_steps}) must be divisible by restart_every ({restart_every})")
+        raise ValueError(
+            f"num_training_steps ({num_training_steps}) must be divisible by restart_every ({restart_every})"
+        )
 
     lr_lambda = partial(
         _get_cosine_schedule_with_multiple_warmups_lambda,
@@ -132,13 +151,17 @@ def magnitude_pruning_(tensor, prune_ratio):
     Only reduces the inner dimensionality, does not affect the shape of the tensor
     """
     tensor_magnitude = torch.abs(tensor)
-    threshold = torch.quantile(tensor_magnitude.flatten().to(dtype=torch.float32), prune_ratio).to(dtype=tensor.dtype)
+    threshold = torch.quantile(
+        tensor_magnitude.flatten().to(dtype=torch.float32), prune_ratio
+    ).to(dtype=tensor.dtype)
 
     mask = tensor_magnitude > threshold
     tensor.mul_(mask.to(dtype=tensor.dtype))
 
 
-def _get_cyclical_cosine_schedule_with_min_lr_lambda(current_step, *, num_warmup_steps, cycle_length, min_lr_ratio):
+def _get_cyclical_cosine_schedule_with_min_lr_lambda(
+    current_step, *, num_warmup_steps, cycle_length, min_lr_ratio
+):
     assert 0 < min_lr_ratio <= 1.0, "min_lr_ratio must be in (0,1]"
 
     # compute where we are in the current cycle
@@ -150,9 +173,11 @@ def _get_cyclical_cosine_schedule_with_min_lr_lambda(current_step, *, num_warmup
                 return 1e-7
         return float(cycle_step) / float(max(1, num_warmup_steps))
 
-    progress = float(cycle_step - num_warmup_steps) / float(max(1, cycle_length - num_warmup_steps))
+    progress = float(cycle_step - num_warmup_steps) / float(
+        max(1, cycle_length - num_warmup_steps)
+    )
     cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
-    
+
     return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
 
 
@@ -175,8 +200,12 @@ def _get_cosine_schedule_with_multiple_warmups_lambda(
     """
     assert 0 < min_lr_ratio <= 1.0, "min_lr_ratio must be in (0,1]"
     assert restart_every > 0, "restart_every must be positive"
-    assert adjust_step + first_warmup_steps <= num_training_steps, "warmup + adjust_step is more than full training steps"
-    assert adjust_step + first_warmup_steps <= restart_every, "the first reset will happen before the warmup is done"
+    assert (
+        adjust_step + first_warmup_steps <= num_training_steps
+    ), "warmup + adjust_step is more than full training steps"
+    assert (
+        adjust_step + first_warmup_steps <= restart_every
+    ), "the first reset will happen before the warmup is done"
 
     if current_step < first_warmup_steps:
         return float(current_step) / float(max(1, first_warmup_steps))
@@ -188,17 +217,22 @@ def _get_cosine_schedule_with_multiple_warmups_lambda(
 
     if restart_step < restart_warmup_steps and current_step >= restart_every:
         # get expected lr multipler at the end of the warmup
-        end_of_warmup_progress = (
-            float(restart_number * restart_every + restart_warmup_steps - first_warmup_steps) /
-            float(max(1, num_training_steps - first_warmup_steps))
-        )
+        end_of_warmup_progress = float(
+            restart_number * restart_every + restart_warmup_steps - first_warmup_steps
+        ) / float(max(1, num_training_steps - first_warmup_steps))
 
         _cosine_decay = 0.5 * (1.0 + math.cos(math.pi * end_of_warmup_progress))
         warmup_lr_multiplier = min_lr_ratio + (1.0 - min_lr_ratio) * _cosine_decay
-    
-        return float(restart_step) / float(max(1, restart_warmup_steps)) * warmup_lr_multiplier
 
-    progress = float(_current_step - first_warmup_steps) / float(max(1, num_training_steps - first_warmup_steps))
+        return (
+            float(restart_step)
+            / float(max(1, restart_warmup_steps))
+            * warmup_lr_multiplier
+        )
+
+    progress = float(_current_step - first_warmup_steps) / float(
+        max(1, num_training_steps - first_warmup_steps)
+    )
     cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
 
     return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
@@ -218,7 +252,9 @@ def get_last_training_state(save_dir):
     # find the model with the highest number of iterations "{args.save_dir}/model_{update_step}"
     model_dirs = [d for d in os.listdir(save_dir) if d.startswith(f"model_")]
     if len(model_dirs) == 0:
-        logger.warning(f"Save directory {save_dir} exists, but does not contain any models.")
+        logger.warning(
+            f"Save directory {save_dir} exists, but does not contain any models."
+        )
         logger.warning("Starting training from scratch.")
         return None, None
 
@@ -235,14 +271,14 @@ def get_last_training_state(save_dir):
 def optimizer_reset(
     optimizer,
     *,
-    reset_params, #list[torch.nn.Parameter],
-    optimizer_state_keys, #list[str],
+    reset_params,  # list[torch.nn.Parameter],
+    optimizer_state_keys,  # list[str],
     reset_optimizer_on_relora: bool,
     optimizer_random_pruning: float,
     optimizer_magnitude_pruning: float,
 ):
     """
-        optimizer_state_keys: e.g., ["exp_avg", "exp_avg_sq"]
+    optimizer_state_keys: e.g., ["exp_avg", "exp_avg_sq"]
     """
     n_reset_types = (
         int(bool(reset_optimizer_on_relora))
@@ -250,10 +286,14 @@ def optimizer_reset(
         + int(bool(optimizer_magnitude_pruning))
     )
     if n_reset_types != 1:
-        logger.warning(f"Got {reset_optimizer_on_relora=}, {optimizer_random_pruning=}, "
-                       f"{optimizer_magnitude_pruning=}")
-        raise ValueError(f"Exactly one of reset_optimizer_on_relora, "
-                         f"optimizer_random_pruning, optimizer_magnitude_pruning must be True")
+        logger.warning(
+            f"Got {reset_optimizer_on_relora=}, {optimizer_random_pruning=}, "
+            f"{optimizer_magnitude_pruning=}"
+        )
+        raise ValueError(
+            f"Exactly one of reset_optimizer_on_relora, "
+            f"optimizer_random_pruning, optimizer_magnitude_pruning must be True"
+        )
 
     # pruning_fn has to be inplace to work with ZeroRedundancyOptimizer
     if reset_optimizer_on_relora:
@@ -262,13 +302,19 @@ def optimizer_reset(
         # see full error below
         pruning_fn = partial(random_pruning_, prune_ratio=0.999)
     elif optimizer_random_pruning:
-        logger.info(f"Performing random pruning of optimizer states. "
-                    f"Pruning {optimizer_random_pruning} percent")
+        logger.info(
+            f"Performing random pruning of optimizer states. "
+            f"Pruning {optimizer_random_pruning} percent"
+        )
         pruning_fn = partial(random_pruning_, prune_ratio=optimizer_random_pruning)
     elif optimizer_magnitude_pruning:
-        logger.info(f"Performing magnitude pruning of optimizer states. "
-                    f"Pruning {optimizer_magnitude_pruning} percent")
-        pruning_fn = partial(magnitude_pruning_, prune_ratio=optimizer_magnitude_pruning)
+        logger.info(
+            f"Performing magnitude pruning of optimizer states. "
+            f"Pruning {optimizer_magnitude_pruning} percent"
+        )
+        pruning_fn = partial(
+            magnitude_pruning_, prune_ratio=optimizer_magnitude_pruning
+        )
     else:
         raise ValueError("Unknown pruning type")
 
@@ -279,17 +325,17 @@ def optimizer_reset(
     # an optimizer state key e.g., "exp_avg", "exp_avg_sq"
     # Note that none of these tensors has parameter names
     # and parameter maps to a **dictionary** of opt. states, not a tensor
-    # 
+    #
     # For ZeroRedundancyOptimizer, it works differently.
     # ZeroRedundancyOptimizer.state always maps to empty dicts.
     # Instead, it uses optimizer.optim.state for rank-local updates.
-    # 
+    #
     # For some reason, zeroing out a tensor in ZeroRedundancyOptimizer.opt.state
     # causes an error during state_dict collection.
     # This is why we use 0.999 pruning ratio for reset_optimizer case.
-    # 
+    #
     # Here's an error that happens:
-    # 
+    #
     # Traceback (most recent call last):
     # File ".../peft_pretraining/torchrun_main.py", line 866, in <module>
     #     main(args)
@@ -306,7 +352,7 @@ def optimizer_reset(
     # File ".../python3.10/site-packages/torch/optim/optimizer.py", line 364, in <dictcomp>
     #     packed_state = {(param_mappings[id(k)] if isinstance(k, torch.Tensor) else k): v
     # KeyError: 140580723685184
-    # 
+    #
     # One one hand, the hypothesis is that making a zero tensor
     # is implementing by changing the pointer in the memory to
     # an existing zero-tensor. But on the other hand, we didn't
@@ -321,10 +367,12 @@ def optimizer_reset(
 
     for p in reset_params:
         param_state = optimizer_state[p]
-        if len(param_state) == 0: # no state for this param, happens for ZeRo optimizer
+        if len(param_state) == 0:  # no state for this param, happens for ZeRo optimizer
             continue
         for key in optimizer_state_keys:
-            pruning_fn(param_state[key])  # pruning fn has to be inplace to keep the same keys in the dict
+            pruning_fn(
+                param_state[key]
+            )  # pruning fn has to be inplace to keep the same keys in the dict
             n_total += param_state[key].numel()
             n_zeros += torch.sum(param_state[key] == 0).item()
 
@@ -342,25 +390,30 @@ def print_optimizer_state_size(optimizer):
         optimizer_state = optimizer.optim.state
 
     for state in optimizer_state.values():
-        if len(state) == 0: # no state for this param, happens for ZeRo optimizer
+        if len(state) == 0:  # no state for this param, happens for ZeRo optimizer
             continue
 
-        first_moment_count += torch.numel(state['exp_avg'])
-        second_moment_count += torch.numel(state['exp_avg_sq'])
+        first_moment_count += torch.numel(state["exp_avg"])
+        second_moment_count += torch.numel(state["exp_avg_sq"])
 
     global_rank = 0
     if dist.is_initialized():
         global_rank = dist.get_rank()
 
-    print(f"(Rank {global_rank}) Number of floats in the first moment: {first_moment_count / 1_000_000:.2f}M")
-    print(f"(Rank {global_rank}) Number of floats in the second moment: {second_moment_count / 1_000_000:.2f}M")
+    print(
+        f"(Rank {global_rank}) Number of floats in the first moment: {first_moment_count / 1_000_000:.2f}M"
+    )
+    print(
+        f"(Rank {global_rank}) Number of floats in the second moment: {second_moment_count / 1_000_000:.2f}M"
+    )
 
 
 def check_lr_and_alert(optimizer, max_lr):
     global_rank = 0 if not dist.is_initialized() else dist.get_rank()
 
     lr = optimizer.param_groups[0]["lr"]
-    if lr <= max_lr: return
+    if lr <= max_lr:
+        return
 
     alert_message = f"Optimizer lr after the reset is large. This can lead to instability. Current lr is {lr}"
     logger.warning(alert_message)
@@ -370,6 +423,7 @@ def check_lr_and_alert(optimizer, max_lr):
             text=alert_message,
             level=wandb.AlertLevel.WARN,
         )
+
 
 def delete_old_checkpoints(save_dir, keep):
     if keep is None:
@@ -386,12 +440,12 @@ def delete_old_checkpoints(save_dir, keep):
         os.system(f"rm -rf {checkpoint_path}")
 
 
-
 ## METAMATH
 def _make_r_io_base(f, mode: str):
     if not isinstance(f, io.IOBase):
         f = open(f, mode=mode)
     return f
+
 
 def jload(f, mode="r"):
     """Load a .json file into a dictionary."""
@@ -401,6 +455,7 @@ def jload(f, mode="r"):
     return jdict
 
 
+# BASE MODEL
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "[PAD]"
 DEFAULT_EOS_TOKEN = "</s>"
@@ -413,15 +468,39 @@ PROMPT_DICT = {
         "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
     ),
     "prompt_no_input": (
-    "Below is an instruction that describes a task. "
-    "Write a response that appropriately completes the request.\n\n"
-    "### Instruction:\n{instruction}\n\n### Response:"
+        "Below is an instruction that describes a task. "
+        "Write a response that appropriately completes the request.\n\n"
+        "### Instruction:\n{instruction}\n\n### Response:"
     ),
 }
 
+# ADD CHAT TEMPLATE
+CHAT_PROMPT_DICT = {
+    # bos_token (<|begin_of_text|>) is added by tokenizer and bos_token (<|eot_id|>) is added by us
+    "prompt_input": """
+<|start_header_id|>system<|end_header_id|>
+
+Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. <|eot_id|><|start_header_id|>user<|end_header_id|>
+
+### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+### Response:
+""".strip(),
+    "prompt_no_input": """
+<|start_header_id|>system<|end_header_id|>
+
+Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. <|eot_id|><|start_header_id|>user<|end_header_id|>
+
+### Instruction:\n{instruction}\n\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+### Response:
+""".strip(),
+}
 
 
-def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
+def _tokenize_fn(
+    strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer
+) -> Dict:
     """Tokenize a list of strings."""
     tokenized_list = [
         tokenizer(
@@ -435,7 +514,8 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
     ]
     input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
     input_ids_lens = labels_lens = [
-        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
+        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item()
+        for tokenized in tokenized_list
     ]
     return dict(
         input_ids=input_ids,
@@ -452,15 +532,21 @@ def preprocess(
 ) -> Dict:
     """Preprocess the data by tokenizing."""
     examples = [s + t for s, t in zip(sources, targets)]
-    examples_tokenized, sources_tokenized = [_tokenize_fn(strings, tokenizer) for strings in (examples, sources)]
+    examples_tokenized, sources_tokenized = [
+        _tokenize_fn(strings, tokenizer) for strings in (examples, sources)
+    ]
     input_ids = examples_tokenized["input_ids"]
     labels = copy.deepcopy(input_ids)
     for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
         label[:source_len] = IGNORE_INDEX
     return dict(input_ids=input_ids, labels=labels)
 
+
 import random
 from torch.utils.data import Dataset
+from datasets import load_dataset
+
+
 class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
@@ -468,43 +554,89 @@ class SupervisedDataset(Dataset):
         super(SupervisedDataset, self).__init__()
         logger.warning("Loading data...")
         data_path = data_args.data_path
-        if data_path == 'meta-math/MetaMathQA':
-            from datasets import load_dataset
-            list_data_dict = load_dataset('meta-math/MetaMathQA')['train'].to_list()
-        else:
-            try:
-                data_path = data_path_map[data_path]
-            except:
-                data_path = data_path
-            try:
-                list_data_dict = jload(data_path)
-            except BaseException:
-                with open(data_path, 'r') as f:
-                    lines = f.readlines()
-                list_data_dict = [json.loads(line.strip()) for line in lines]
 
-        list_data_dict = random.sample(list_data_dict,  len(list_data_dict))
-        list_data_dict = list_data_dict[:data_args.data_length]
+        # MetaMath
+        question_key = "query"
+        response_key = "response"
+        input_key = "query"
+        def get_input(_in):
+            if _in.find("\n") == -1:
+                return ""
+            return "\n".join(_in.split("\n")[1:])
+        if data_path == "meta-math/MetaMathQA":
+            list_data_dict = load_dataset("meta-math/MetaMathQA")["train"].to_list()
+        elif data_path == "qiaojin/PubMedQA":
+            question_key = "question"
+            response_key = "long_answer"
+            input_key = "context"
+            def get_input(_in):
+                return _in['contexts'][0]
+            list_data_dict = load_dataset("qiaojin/PubMedQA", "pqa_artificial")[
+                "train"
+            ].to_list()
+        # else:
+        #     try:
+        #         data_path = data_path_map[data_path]
+        #     except:
+        #         data_path = data_path
+        #     try:
+        #         list_data_dict = jload(data_path)
+        #     except BaseException:
+        #         with open(data_path, "r") as f:
+        #             lines = f.readlines()
+        #         list_data_dict = [json.loads(line.strip()) for line in lines]
 
-        prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
-        # print(list_data_dict[0])
-        if 'instruction' in list_data_dict[0]:
-            pass
+        list_data_dict = random.sample(list_data_dict, len(list_data_dict))
+        list_data_dict = list_data_dict[: data_args.data_length]
+
+        # if "instruction" in list_data_dict[0]:
+        #     pass
+        # else:
+
+        list_data_dict = [
+            {
+                "instruction": data[question_key].strip(),
+                "input": get_input(data[input_key]),
+                "output": data[response_key],
+            }
+            for data in list_data_dict
+        ]
+
+        # print(
+        #     "(DATA LOG)",
+        #     list_data_dict[0],
+        #     list_data_dict[1],
+        #     list_data_dict[100],
+        #     end="\n\n",
+        # )
+        if data_args.is_chat:
+            prompt_dict = CHAT_PROMPT_DICT
         else:
-            def get_input(query):
-                if query.find('\n') == -1:
-                    return ''
-                return '\n'.join(query.split('\n')[1:])
-            list_data_dict = [{'instruction':data['query'].split('\n')[0], 'input':get_input(data['query']), 'output':data['response']} for data in list_data_dict]
-        # import ipdb; ipdb.set_trace()
+            prompt_dict = PROMPT_DICT
+
         sources = [
-            prompt_input.format_map(example) if example.get("input", "") != "" else prompt_no_input.format_map(example)
+            (
+                prompt_dict["prompt_input"].format_map(example)
+                if example.get("input", "") != ""
+                else prompt_dict["prompt_no_input"].format_map(example)
+            )
             for example in list_data_dict
         ]
-        targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
+        targets = [
+            f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict
+        ]
+
+        print("(SOURCES LOG)", sources[0], end="\n\n")
+        print("(TARGETS LOG)", targets[0], end="\n\n")
 
         self.sources = sources
         self.targets = targets
+
+    
+            
+
+
+
 
     def __len__(self):
         return len(self.sources)
@@ -515,7 +647,10 @@ class SupervisedDataset(Dataset):
     def __getitem__(self, i):
         return dict(input_ids=self.sources[i], labels=self.targets[i])
 
+
 from dataclasses import dataclass, field
+
+
 @dataclass
 class DataCollatorForSupervisedDataset(object):
     """Collate examples for supervised fine-tuning."""
@@ -523,11 +658,15 @@ class DataCollatorForSupervisedDataset(object):
     tokenizer: transformers.PreTrainedTokenizer
 
     def naive__call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-        input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
+        input_ids, labels = tuple(
+            [instance[key] for instance in instances] for key in ("input_ids", "labels")
+        )
         input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
         )
-        labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
+        labels = torch.nn.utils.rnn.pad_sequence(
+            labels, batch_first=True, padding_value=IGNORE_INDEX
+        )
         return dict(
             input_ids=input_ids,
             labels=labels,
@@ -538,26 +677,43 @@ class DataCollatorForSupervisedDataset(object):
         sources = []
         targets = []
         for instance in instances:
-            source = instance['input_ids']
-            target = instance['labels']
+            source = instance["input_ids"]
+            target = instance["labels"]
             sources.append(source)
             targets.append(target)
 
         data_dict = preprocess(sources, targets, self.tokenizer)
-        input_ids, labels = data_dict['input_ids'], data_dict['labels']
-        # input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
+        input_ids, labels = data_dict["input_ids"], data_dict["labels"]
         input_ids = torch.nn.utils.rnn.pad_sequence(
             input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
         )
-        labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
+        labels = torch.nn.utils.rnn.pad_sequence(
+            labels, batch_first=True, padding_value=IGNORE_INDEX
+        )
         return dict(
             input_ids=input_ids,
             labels=labels,
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id).long(),
         )
 
-def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, data_args) -> Dict:
+
+def make_supervised_data_module(
+    tokenizer: transformers.PreTrainedTokenizer, data_args
+) -> Dict:
     """Make dataset and collator for supervised fine-tuning."""
+
     train_dataset = SupervisedDataset(tokenizer=tokenizer, data_args=data_args)
+    eval_dataset = None
+    if hasattr(data_args, "val_split") and data_args.val_split > 0:
+        train_size = int(len(train_dataset) * (1 - data_args.val_split))
+        train_dataset, eval_dataset = torch.utils.data.random_split(
+            train_dataset, 
+            [train_size, len(train_dataset) - train_size],
+            generator=torch.Generator().manual_seed(42)
+        )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
-    return dict(train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator)
+    return dict(
+        train_dataset=train_dataset, 
+        eval_dataset=eval_dataset,
+        data_collator=data_collator
+    )
