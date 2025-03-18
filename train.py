@@ -629,8 +629,8 @@ def train(
         # NOTE: set this to eos token, set to unk(0) while make output nan
             2  # unk. we want this to be different from the eos token
         )
-    elif data_path == 'qiaojin/PubMedQA':
-        data_args = setup_data_args(data_path, base_model, data_length=100000, val_split=0.02)
+    elif 'pub-med-qa' in data_path:
+        data_args = setup_data_args('qiaojin/PubMedQA', base_model, data_length=100000, val_split=0.02)
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             base_model,
             model_max_length=768,
@@ -641,6 +641,8 @@ def train(
         # NOTE: set this to eos token, set to unk(0) while make output nan
             2  # unk. we want this to be different from the eos token
         )
+    else:
+        raise ValueError(f"Data path {data_path} not supported")
     
     from training_utils import make_supervised_data_module
     lr_scheduler_type = 'cosine'
