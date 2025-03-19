@@ -387,11 +387,16 @@ def train(
     set_seed(seed)
     gradient_accumulation_steps = batch_size // micro_batch_size
 
+    # bug in transformers for wandb
+    # if output_dir == wandb_run_name:
     output_dir = wandb_run_name
+    output_dir = 'save_' + output_dir
 
-    # bug in transformers
-    if output_dir == wandb_run_name:
-        output_dir = 'save_' + output_dir
+    # create parent folder by dataset
+    output_dir = data_path + '/' + wandb_run_name
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
 
     SAVE_PATH = output_dir
 
@@ -603,18 +608,14 @@ def train(
 
     warmup_ratio = 0
 
-    def setup_data_args(data_path, base_model, data_length=None, val_split=None):
-        class A:
-            pass
-        data_args = A()
-        data_args.data_path = data_path
-        if data_length is not None:
-            data_args.data_length = data_length
-        if val_split is not None:
-            data_args.val_split = val_split
-        data_args.is_chat = False
-        if 'Llama-3' in base_model and 'Instruct' in base_model:
-            data_args.is_chat = True
+    def setup_data_args(data_path, base_model, data_length=None, val_split=None, subset=None):
+        data_args = type('DataArgs', (), {
+            'data_path': data_path,
+            'data_length': data_length,
+            'val_split': val_split,
+            'is_chat': 'Llama-3' in base_model and 'Instruct' in base_model,
+            'subset': subset
+        })()
         return data_args
 
     if 'meta-math' in data_path:
@@ -630,7 +631,7 @@ def train(
             2  # unk. we want this to be different from the eos token
         )
     elif 'pub-med-qa' in data_path:
-        data_args = setup_data_args('qiaojin/PubMedQA', base_model, data_length=100000, val_split=0.02)
+        data_args = setup_data_args('qiaojin/PubMedQA', base_model, data_length=100000, val_split=0.02, subset='pqa_artificial')
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             base_model,
             model_max_length=768,
@@ -675,7 +676,7 @@ def train(
 
 
     TRAINER_CLS = OurTrainer
-    eval_args = dict(eval_strategy="steps", eval_steps=eval_steps, per_device_eval_batch_size=micro_batch_size, eval_accumulation_steps=2) if eval_data else {}
+    eval_args = dict(evaluation_strategy="steps", eval_steps=eval_steps, per_device_eval_batch_size=micro_batch_size, eval_accumulation_steps=2) if eval_data else {}
     trainer = TRAINER_CLS(
         model=model,
         train_dataset=train_data,
@@ -694,7 +695,6 @@ def train(
             bf16=use_bf16,
             logging_steps=logging_steps,
             optim="adamw_torch",
-            evaluation_strategy="no",
             save_strategy="steps",
             save_steps=save_steps,
             output_dir=output_dir,

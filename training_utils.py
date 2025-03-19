@@ -577,14 +577,18 @@ class SupervisedDataset(Dataset):
             input_key = "context"
 
             def get_input(row):
-                return '\n\n---\n\n'.join(row[input_key]['contexts'])
-            
+                return "\n\n---\n\n".join(row[input_key]["contexts"])
+
             def get_output(row):
                 return f"{row[response_key]}\nFinal Decision: {row['final_decision']}"
-            
-            list_data_dict = load_dataset("qiaojin/PubMedQA", "pqa_artificial")[
-                "train"
-            ].to_list()
+
+            # default is pqa_artificial
+            list_data_dict = load_dataset("qiaojin/PubMedQA", "pqa_artificial")
+            # if subset is provided, load the subset
+            if data_args.subset:
+                list_data_dict = load_dataset("qiaojin/PubMedQA", data_args.subset)
+            list_data_dict = list_data_dict["train"].to_list()
+
         # else:
         #     try:
         #         data_path = data_path_map[data_path]
@@ -597,6 +601,7 @@ class SupervisedDataset(Dataset):
         #             lines = f.readlines()
         #         list_data_dict = [json.loads(line.strip()) for line in lines]
 
+        # random sample the data
         list_data_dict = random.sample(list_data_dict, len(list_data_dict))
         list_data_dict = list_data_dict[: data_args.data_length]
 
@@ -604,6 +609,7 @@ class SupervisedDataset(Dataset):
         #     pass
         # else:
 
+        # convert to labels for prompt
         list_data_dict = [
             {
                 "instruction": data[question_key].strip(),
@@ -620,11 +626,14 @@ class SupervisedDataset(Dataset):
         #     list_data_dict[100],
         #     end="\n\n",
         # )
+
+        # llama instruct or base format
         if data_args.is_chat:
             prompt_dict = CHAT_PROMPT_DICT
         else:
             prompt_dict = PROMPT_DICT
 
+        # sources are inputs, and not counted toward loss. contains question and context.
         sources = [
             (
                 prompt_dict["prompt_input"].format_map(example)
@@ -633,15 +642,19 @@ class SupervisedDataset(Dataset):
             )
             for example in list_data_dict
         ]
+
+        # targest are responses, and counts toward loss. contains answer and final decision.
         targets = [
             f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict
         ]
 
-        print("(SOURCES LOG)", sources[0], end="\n\n")
-        print("(TARGETS LOG)", targets[0], end="\n\n")
-
         self.sources = sources
         self.targets = targets
+
+        print("(SOURCES LOG)", self.sources[0], end="\n\n")
+        print("(TARGETS LOG)", self.targets[0], end="\n\n")
+
+
 
     def __len__(self):
         return len(self.sources)
@@ -712,13 +725,13 @@ def make_supervised_data_module(
     if hasattr(data_args, "val_split") and data_args.val_split > 0:
         train_size = int(len(train_dataset) * (1 - data_args.val_split))
         train_dataset, eval_dataset = torch.utils.data.random_split(
-            train_dataset, 
+            train_dataset,
             [train_size, len(train_dataset) - train_size],
-            generator=torch.Generator().manual_seed(42)
+            generator=torch.Generator().manual_seed(42),
         )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
     return dict(
-        train_dataset=train_dataset, 
+        train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=data_collator
+        data_collator=data_collator,
     )
