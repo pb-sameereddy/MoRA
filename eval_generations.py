@@ -1,18 +1,55 @@
 # %%
 import json
+import glob
+def parse_checkpoint(f):
+    # Assuming format like "prefix_ckpt{idx}_suffix"
+    base = f.split('ckpt')[0].strip('_')  # Get the prefix before 'ckpt'
+    remaining = f.split('ckpt')[1]
+    
+    # Split the remaining part into idx and suffix
+    idx = int(remaining.split('_')[0])  # Extract the number after 'ckpt'
+    suffix = remaining.split('_')[1] if '_' in remaining else ''  # Get suffix if exists
+    suffix = suffix.strip('.json')
+    return base, idx, suffix
 
-# %%
-with open("pub-med-eval/lora_rank128_lr1e-4_witheval_ckpt400_test.json", "r") as f:
-    data = json.load(f)
-
-generations_str = data["generations_str"]
-# decisions_y = data["decisions_y"] # BROKEN
+# glob all files in pub-med-eval
+files = glob.glob("pub-med-eval/*.json")
+# Load true decisions once
 with open("pub-med-eval/true_decisions_y.json", "r") as f:
-    decisions_y = json.load(f)
-decisions_yhat = data["decisions_yhat"]
+    true_decisions_y = json.load(f)
+
+# Create a table of results
+results = []
+for filename in files:
+    try:
+        # Parse checkpoint info
+        run, idx, suffix = parse_checkpoint(filename)
+        
+        # Load predictions
+        with open(filename, "r") as f:
+            data = json.load(f)
+        
+        # Calculate accuracy
+        decisions_yhat = data["decisions_yhat"]
+        accuracy = sum([decisions_yhat[i] == true_decisions_y[i] for i in range(len(true_decisions_y))]) / len(true_decisions_y)
+        
+        # Add to results
+        results.append({
+            "filename": filename,
+            "run": run,
+            "idx": idx,
+            "suffix": suffix,
+            "accuracy": accuracy
+        })
+        
+    except Exception as e:
+        print(f"Error processing {filename}: {e}")
+
+# Display results as a table
+import pandas as pd
+results_df = pd.DataFrame(results)
+results_df
 
 # %%
-accuracy = sum([decisions_yhat[i] == decisions_y[i] for i in range(len(decisions_y))]) / len(decisions_y)
-print(f"Accuracy: {accuracy}")
 
 # %%
