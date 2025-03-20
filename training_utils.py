@@ -558,19 +558,19 @@ class SupervisedDataset(Dataset):
         # MetaMath
         question_key = "query"
         response_key = "response"
-        input_key = "query"
 
         def get_input(row):
-            _in = row[input_key]
-            if _in.find("\n") == -1:
-                return ""
-            return "\n".join(_in.split("\n")[1:])
+            return None
 
         def get_output(row):
             return row[response_key]
 
         if data_path == "meta-math/MetaMathQA":
             list_data_dict = load_dataset("meta-math/MetaMathQA")["train"].to_list()
+        elif data_path == "openai/gsm8k": # Only for evaluation
+            list_data_dict = load_dataset("openai/gsm8k", "main")["test"].to_list()
+            question_key = "question"
+            answer_key = "answer"
         elif data_path == "qiaojin/PubMedQA":
             question_key = "question"
             response_key = "long_answer"
