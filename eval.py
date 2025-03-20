@@ -196,6 +196,12 @@ parser.add_argument(
     default=1000,
     help="Number of samples to use from dataset",
 )
+parser.add_argument(
+    "--eval_base_model",
+    type=bool,
+    default=False,
+    help="Whether to evaluate the base model only",
+)
 
 args = parser.parse_args()
 print(f"Args:\n{args}")
@@ -216,6 +222,9 @@ print(f"Results will be saved to {save_path}")
 print(f"Loading model from {ckpt_path}...")
 model = load_model(ckpt_path)
 model.to(device)
+if args.eval_base_model:
+    print("Disabling adapters...")
+    model.disable_adapters()
 
 # Load the data using the new function
 data_module, tokenizer = load_data(
