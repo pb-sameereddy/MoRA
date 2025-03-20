@@ -202,9 +202,8 @@ print(f"Args:\n{args}")
 
 # Load model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-ckpt_path = "/root/MoRA/pub-med-qa/lora_rank128_lr1e-4_witheval/checkpoint-400"
-print("Loading model...")
-model = load_model(ckpt_path)
+print(f"Loading model from {args.ckpt_path}...")
+model = load_model(args.ckpt_path)
 model.to(device)
 
 data_path = "qiaojin/PubMedQA"
