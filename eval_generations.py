@@ -13,7 +13,9 @@ def parse_checkpoint(f):
     return base, idx, suffix
 
 # glob all files in pub-med-eval
-files = glob.glob("pub-med-eval/*.json")
+files = glob.glob("pub-med-eval/*_test.json")
+
+
 # Load true decisions once
 with open("pub-med-eval/true_decisions_y.json", "r") as f:
     true_decisions_y = json.load(f)
@@ -24,6 +26,8 @@ for filename in files:
     try:
         # Parse checkpoint info
         run, idx, suffix = parse_checkpoint(filename)
+        # if suffix != 'test':
+            # continue
         
         # Load predictions
         with open(filename, "r") as f:
@@ -38,7 +42,7 @@ for filename in files:
             "filename": filename,
             "run": run,
             "idx": idx,
-            "suffix": suffix,
+            # "suffix": suffix,
             "accuracy": accuracy
         })
         
@@ -49,7 +53,7 @@ for filename in files:
 import pandas as pd
 results_df = pd.DataFrame(results)
 results_df
+results_df.to_csv('pub-med-eval/eval_generations_results.csv', index=False)
 
-# %%
 
 # %%

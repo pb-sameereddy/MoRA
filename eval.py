@@ -6,59 +6,7 @@ from typing import Dict, List
 from peft import AutoPeftModelForCausalLM
 import torch
 from tqdm import tqdm
-
-
-def setup_data_args(
-    data_path, base_model, data_length=None, val_split=None, subset=None
-):
-    DataArgs = namedtuple(
-        "DataArgs", ["data_path", "data_length", "val_split", "subset", "is_chat"]
-    )
-    is_chat = "Llama-3" in base_model and "Instruct" in base_model
-    return DataArgs(data_path, data_length, val_split, subset, is_chat)
-
-
-def load_data(
-    data_path: str,
-    base_model: str,
-    data_length: int = None,
-    val_split: float = 0.0,
-    subset: str = None,
-    model_max_length: int = 1024,  # Set to something large enough to handle the data for eval usecase. Doesnt have to match train.
-) -> tuple:
-    """
-    Load and prepare dataset for training and evaluation.
-
-    Args:
-        data_path: Path to the dataset ('meta-math/MetaMathQA' or 'qiaojin/PubMedQA')
-        base_model: Name of the base model to use
-        data_length: Number of samples to use from dataset
-        val_split: Fraction of data to use for validation
-        model_max_length: Maximum sequence length for tokenizer. If None, uses defaults (512 for meta-math, 768 for PubMedQA)
-
-    Returns:
-        tuple: (train_dataset, eval_dataset, tokenizer)
-    """
-    # Setup data arguments based on dataset
-    if "meta-math" in data_path or data_path in ("openai/gsm8k", "qiaojin/PubMedQA"):
-        data_args = setup_data_args(
-            data_path, base_model, data_length=data_length, val_split=val_split
-        )
-    else:
-        raise ValueError(f"Unsupported dataset: {data_path}")
-
-    # Initialize tokenizer
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
-        base_model,
-        model_max_length=model_max_length,
-        padding_side="right",
-        use_fast=False,
-    )
-    tokenizer.pad_token_id = 2  # unk token, different from eos token
-
-    # Create data module and return datasets
-    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
-    return data_module, tokenizer
+from eval_utils import load_data, extract_decision
 
 
 def load_model(ckpt_path: str) -> AutoPeftModelForCausalLM:
@@ -156,16 +104,6 @@ def get_eval_loss(
             loss_by_batch.append(outputs.loss.mean().item())
 
     return sum(loss_by_batch) / len(loss_by_batch), loss_by_batch
-
-
-def extract_decision(label: str) -> str:
-    decision = label.split("Final Decision: ")[1].split("<|eot_id|>")[0].strip()
-    if decision not in ["yes", "no", "maybe"]:
-        print(f"Invalid decision: {decision}")
-        return None
-    return decision
-
-
 
 # Load pubmed test set
 import json
