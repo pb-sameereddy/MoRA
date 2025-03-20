@@ -62,6 +62,7 @@ def eval_generations(f):
             continue
         ground_truth = extract_decision(data[matching_indices[i]]['labels'])
         prediction = extract_decision(generations_str[i])
+
         if ground_truth == prediction:
             score += 1
         else:

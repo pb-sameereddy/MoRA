@@ -570,7 +570,7 @@ class SupervisedDataset(Dataset):
         elif data_path == "openai/gsm8k": # Only for evaluation
             list_data_dict = load_dataset("openai/gsm8k", "main")["test"].to_list()
             question_key = "question"
-            answer_key = "answer"
+            response_key = "answer"
         elif data_path == "qiaojin/PubMedQA":
             question_key = "question"
             response_key = "long_answer"
@@ -602,8 +602,10 @@ class SupervisedDataset(Dataset):
         #         list_data_dict = [json.loads(line.strip()) for line in lines]
 
         # random sample the data
+        random.seed(42)
         list_data_dict = random.sample(list_data_dict, len(list_data_dict))
-        list_data_dict = list_data_dict[: data_args.data_length]
+        if data_args.data_length:
+            list_data_dict = list_data_dict[: data_args.data_length]
 
         # if "instruction" in list_data_dict[0]:
         #     pass

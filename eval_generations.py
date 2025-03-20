@@ -1,6 +1,7 @@
 # %%
 import json
 import glob
+import os
 def parse_checkpoint(f):
     # Assuming format like "prefix_ckpt{idx}_suffix"
     base = f.split('ckpt')[0].strip('_')  # Get the prefix before 'ckpt'
@@ -49,10 +50,24 @@ for filename in files:
     except Exception as e:
         print(f"Error processing {filename}: {e}")
 
+# base model
+f = "pub-med-eval/base_model.json"
+if os.path.exists(f):
+    with open(f, "r") as f:
+        data = json.load(f)
+    accuracy = sum([data["decisions_yhat"][i] == true_decisions_y[i] for i in range(len(true_decisions_y))]) / len(true_decisions_y)
+    results.append({
+        "filename": f,
+        "run": "base_model",
+        "idx": 0,
+        "accuracy": accuracy
+    })
+
+
 # Display results as a table
 import pandas as pd
 results_df = pd.DataFrame(results)
-results_df
+print(results_df)
 results_df.to_csv('pub-med-eval/eval_generations_results.csv', index=False)
 
 

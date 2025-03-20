@@ -1,6 +1,10 @@
+from typing import List
 from training_utils import make_supervised_data_module
 from collections import namedtuple
 import transformers
+import torch
+from tqdm import tqdm
+from peft import AutoPeftModelForCausalLM
 
 def setup_data_args(
     data_path, base_model, data_length=None, val_split=None, subset=None
@@ -10,7 +14,6 @@ def setup_data_args(
     )
     is_chat = "Llama-3" in base_model and "Instruct" in base_model
     return DataArgs(data_path, data_length, val_split, subset, is_chat)
-
 
 def load_data(
     data_path: str,
@@ -34,20 +37,13 @@ def load_data(
         tuple: (train_dataset, eval_dataset, tokenizer)
     """
     # Setup data arguments based on dataset
-    if data_path == "meta-math/MetaMathQA":
-        data_args = setup_data_args(
-            data_path, base_model, data_length=data_length, val_split=val_split
-        )
-    elif data_path == "qiaojin/PubMedQA":
-        data_args = setup_data_args(
-            data_path,
-            base_model,
-            data_length=data_length,
-            val_split=val_split,
-            subset=subset,
-        )
-    else:
-        raise ValueError(f"Unsupported dataset: {data_path}")
+    data_args = setup_data_args(
+        data_path,
+        base_model,
+        data_length=data_length,
+        val_split=val_split,
+        subset=subset,
+    )
 
     # Initialize tokenizer
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -60,12 +56,70 @@ def load_data(
 
     # Create data module and return datasets
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
+    
     return data_module, tokenizer
 
-
 def extract_decision(label: str) -> str:
-    decision = label.split('Final Decision: ')[1].split('<|eot_id|>')[0].strip()
-    if decision not in ['yes', 'no', 'maybe']:
-        print(f"Invalid decision: {decision}")
+    try:
+        decision = label.split('Final Decision: ')[1].split('<|eot_id|>')[0].strip()
+        if decision not in ['yes', 'no', 'maybe']:
+            print(f"Invalid decision: {decision}")
+            return None
+        return decision
+    except:
+        print(f"Error extracting decision from label: {label}")
         return None
-    return decision
+    
+def load_model(ckpt_path: str) -> AutoPeftModelForCausalLM:
+    """
+    Load a PEFT model from a checkpoint path.
+
+    Args:
+        ckpt_path: Path to the model checkpoint
+
+    Returns:
+        AutoPeftModelForCausalLM: The loaded model
+    """
+    model = AutoPeftModelForCausalLM.from_pretrained(
+        ckpt_path,
+        # device_map="auto",
+    )
+    return model
+
+
+# Load the model
+# ckpt_path = '/root/MoRA/pub-med-qa/save_test_lora_rank128_lr1e-4/checkpoint-1200'
+# model = load_model(ckpt_path)
+
+def get_model_generations(
+    model, tokenizer, prompts: List[str], max_new_tokens: int = 512
+) -> List[torch.Tensor]:
+    """
+    Get predictions from the model for a list of prompts.
+
+    Args:
+        model: The model to get predictions from.
+        prompts: List of prompt strings to generate from.
+
+    Returns:
+        List[torch.Tensor]: The generated outputs from the model.
+    """
+    predictions = []
+    device = model.device
+
+    for prompt in tqdm(prompts, desc="Generating.."):
+        inputs = tokenizer(prompt, return_tensors="pt")
+        input_ids = inputs["input_ids"].to(device)
+        attention_mask = inputs["attention_mask"].to(device)
+
+        with torch.no_grad():
+            prediction = model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
+                pad_token_id=2,
+            )
+
+        predictions.append(prediction.cpu().squeeze(0))
+
+    return predictions
