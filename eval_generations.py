@@ -24,6 +24,7 @@ with open("pub-med-eval/true_decisions_y.json", "r") as f:
 # Create a table of results
 results = []
 for filename in files:
+    print(f"Evaluating {filename}")
     try:
         # Parse checkpoint info
         run, idx, suffix = parse_checkpoint(filename)
@@ -51,17 +52,17 @@ for filename in files:
         print(f"Error processing {filename}: {e}")
 
 # base model
-f = "pub-med-eval/base_model.json"
-if os.path.exists(f):
-    with open(f, "r") as f:
-        data = json.load(f)
-    accuracy = sum([data["decisions_yhat"][i] == true_decisions_y[i] for i in range(len(true_decisions_y))]) / len(true_decisions_y)
-    results.append({
-        "filename": f,
-        "run": "base_model",
-        "idx": 0,
-        "accuracy": accuracy
-    })
+# f = "pub-med-eval/base_model.json"
+# if os.path.exists(f):
+#     with open(f, "r") as f:
+#         data = json.load(f)
+#     accuracy = sum([data["decisions_yhat"][i] == true_decisions_y[i] for i in range(len(true_decisions_y))]) / len(true_decisions_y)
+#     results.append({
+#         "filename": f,
+#         "run": "base_model",
+#         "idx": 0,
+#         "accuracy": accuracy
+#     })
 
 
 # Display results as a table

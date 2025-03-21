@@ -2,6 +2,7 @@ import os
 import sys
 import types
 from typing import List, Optional
+import pandas as pd
 
 import datasets
 import torch
@@ -721,12 +722,16 @@ def train(
         )
         return data_args
 
+    supervised = True
+    # https://www.notion.so/predibase/MoRA-Findings-1bcd18ee58ba80bdaf93ef188451bd87?pvs=4#1bdd18ee58ba804a8d39f7f049524a91
+    val_split = 0.02
+    model_max_length = 1024
     if "meta-math" in data_path:
         data_args = setup_data_args(
             "meta-math/MetaMathQA",
             base_model,
             data_length=100000,
-            val_split=0.02,
+            val_split=val_split,
         )
         model_max_length = 512
     elif "pub-med-qa" in data_path:
@@ -734,52 +739,45 @@ def train(
             "qiaojin/PubMedQA",
             base_model,
             data_length=100000,
-            val_split=0.02,
+            val_split=val_split,
             subset="pqa_artificial",
         )
         model_max_length = 768
+    elif "pub-med-cpt" in data_path:
+        supervised = False
+        train_data = load_from_disk('datasets/hf_pub_med_cpt')
+        train_data, eval_data = train_data['train'], train_data['test']
+        # only keep input_ids and attention_mask
+        train_data = train_data.select_columns(['input_ids', 'attention_mask'])
+        eval_data = eval_data.select_columns(['input_ids', 'attention_mask'])
     else:
         raise ValueError(f"Data path {data_path} not supported")
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
-        base_model,
-        model_max_length=model_max_length,
-        padding_side="right",
-        use_fast=False,
-    )
+
+    if supervised:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            base_model,
+            model_max_length=model_max_length,
+            padding_side="right",
+            use_fast=False,
+        )
+        data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
+        train_data = data_module["train_dataset"]
+        eval_data = data_module["eval_dataset"]
+        data_collator = data_module["data_collator"]
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(base_model, model_max_length=model_max_length)
+        data_collator = transformers.DataCollatorWithPadding(tokenizer, padding='longest', max_length=model_max_length)
+
     tokenizer.pad_token_id = (
         # NOTE: set this to eos token, set to unk(0) while make output nan
         2  # unk. we want this to be different from the eos token
     )
 
-    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
-    train_data = data_module["train_dataset"]
-    eval_data = data_module["eval_dataset"]
-    data_collator = data_module["data_collator"]
-
     print(f"train_data has: {len(train_data)} samples")
     print(f"eval_data has: {len(eval_data)} samples")
 
     warmup_steps, warmup_ratio = 0, 0.03
-
-    # else:
-    #     train_data = load_from_disk(data_path)
-    #     if 'open-instruct-tokenized' in data_path:
-    #         prev_len = len(train_data)
-    #         #train_data = train_data.filter(lambda x: max(x['input_ids']) < 32000,num_proc=48)
-    #         def remap(entry):
-    #             entry['input_ids'] = [x if x < 32000 else 0 for x in entry['input_ids']]
-    #             return entry
-    #         # this sample contain <pad> which is add new token in prev
-    #         print(f'filter out {prev_len - len(train_data)} samples')
-    #         if cutoff_len != 2048:
-    #             def cut_off(entry):
-    #                 entry['input_ids'] = entry['input_ids'][:cutoff_len]
-    #                 entry['attention_mask'] = entry['attention_mask'][:cutoff_len]
-    #                 entry['labels'] = entry['labels'][:cutoff_len]
-    #                 return entry
-    #             train_data = train_data.map(cut_off, num_proc=48)
-    #             train_data = train_data.filter(lambda example: (torch.LongTensor(example['labels']) != -100).any(), num_proc=48)
 
     TRAINER_CLS = OurTrainer
     eval_args = (
