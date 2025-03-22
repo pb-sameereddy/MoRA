@@ -817,7 +817,7 @@ def train(
             save_strategy="steps",
             save_steps=save_steps,
             output_dir=output_dir,
-            logging_dir=output_dir,
+            logging_dir=output_dir + '/logs',
             load_best_model_at_end=False,
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,
