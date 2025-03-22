@@ -505,6 +505,9 @@ def train(
 
     MODEL_CLASS = AutoModelForCausalLM
 
+    # TODO(sameer): Forced disable of wandb
+    use_wandb = False
+
     if debug:
         # random init
         config = AutoConfig.from_pretrained(base_model, trust_remote_code=True)
@@ -798,6 +801,7 @@ def train(
         train_dataset=train_data,
         eval_dataset=eval_data,
         args=transformers.TrainingArguments(
+            save_only_model=True,
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             warmup_steps=warmup_steps,
@@ -817,7 +821,7 @@ def train(
             load_best_model_at_end=False,
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,
-            report_to="wandb" if use_wandb else "none",
+            report_to="wandb" if use_wandb else "tensorboard",
             run_name=wandb_run_name if use_wandb else None,
             deepspeed=deepspeed,
             seed=seed,
