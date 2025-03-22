@@ -33,7 +33,7 @@ from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_pt_utils import LengthGroupedSampler
 from transformers.trainer_utils import has_length
 from transformers.utils import is_sagemaker_mp_enabled, logging
-from training_utils import make_supervised_data_module
+from training_utils import make_supervised_data_module, DataCollatorForCausalLM
 
 logger = logging.get_logger(__name__)
 
@@ -432,7 +432,6 @@ def train(
     use_bf16: bool = False,
     train_embhead: bool = False,
     max_samples: int = -1,
-    save_total_limit: int = 7,
     new_pad_token: bool = False,
     save_steps: int = 500,
     grad_checkpoint: bool = False,
@@ -747,9 +746,14 @@ def train(
         supervised = False
         train_data = load_from_disk('datasets/hf_pub_med_cpt')
         train_data, eval_data = train_data['train'], train_data['test']
-        # only keep input_ids and attention_mask
         train_data = train_data.select_columns(['input_ids', 'attention_mask'])
         eval_data = eval_data.select_columns(['input_ids', 'attention_mask'])
+
+        def add_labels(example):
+            example['labels'] = example['input_ids']
+            return example
+        # eval_data = eval_data.map(add_labels, num_proc=10)
+
     else:
         raise ValueError(f"Data path {data_path} not supported")
 
@@ -767,7 +771,7 @@ def train(
         data_collator = data_module["data_collator"]
     else:
         tokenizer = AutoTokenizer.from_pretrained(base_model, model_max_length=model_max_length)
-        data_collator = transformers.DataCollatorWithPadding(tokenizer, padding='longest', max_length=model_max_length)
+        data_collator = DataCollatorForCausalLM(tokenizer=tokenizer, model_max_length=model_max_length)
 
     tokenizer.pad_token_id = (
         # NOTE: set this to eos token, set to unk(0) while make output nan
@@ -785,7 +789,6 @@ def train(
             evaluation_strategy="steps",
             eval_steps=eval_steps,
             per_device_eval_batch_size=micro_batch_size,
-            eval_accumulation_steps=2,
         )
         if eval_data
         else {}
@@ -801,7 +804,6 @@ def train(
             warmup_ratio=warmup_ratio,
             num_train_epochs=num_epochs,
             max_steps=max_steps,
-            # max_steps=10000,
             learning_rate=learning_rate,
             lr_scheduler_type=lr_scheduler_type,
             fp16=False if use_bf16 else True,
@@ -811,7 +813,7 @@ def train(
             save_strategy="steps",
             save_steps=save_steps,
             output_dir=output_dir,
-            save_total_limit=save_total_limit,
+            logging_dir=output_dir,
             load_best_model_at_end=False,
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,

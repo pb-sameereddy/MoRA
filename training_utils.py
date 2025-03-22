@@ -14,7 +14,7 @@ from torch.distributed.fsdp import (
     MixedPrecision,
 )
 from transformers.trainer_utils import has_length
-
+from transformers import DataCollatorWithPadding
 import transformers
 import wandb
 
@@ -715,6 +715,22 @@ class DataCollatorForSupervisedDataset(object):
             labels=labels,
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id).long(),
         )
+    
+@dataclass
+class DataCollatorForCausalLM(object):
+    """Collate examples for causal language modeling."""
+
+    def __init__(self, tokenizer: transformers.PreTrainedTokenizer, model_max_length: int):
+        self.tokenizer = tokenizer
+        self.collator_with_padding = DataCollatorWithPadding(tokenizer=tokenizer)
+        transformers.DataCollatorWithPadding(tokenizer, padding='longest', max_length=model_max_length)
+
+    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+        padded = self.collator_with_padding(instances)
+        padded['labels'] = padded['input_ids'].clone()
+        return padded
+
+
 
 
 def make_supervised_data_module(
