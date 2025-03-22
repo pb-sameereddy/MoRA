@@ -471,6 +471,9 @@ def train(
         os.makedirs(output_dir)
 
     SAVE_PATH = output_dir
+    logging_dir = output_dir + "/logs"
+    if not os.path.exists(logging_dir):
+        os.makedirs(logging_dir)
 
     device_map = "auto"
     world_size = int(os.environ.get("WORLD_SIZE", 1))
@@ -817,7 +820,7 @@ def train(
             save_strategy="steps",
             save_steps=save_steps,
             output_dir=output_dir,
-            logging_dir=output_dir + '/logs',
+            logging_dir=logging_dir,
             load_best_model_at_end=False,
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,
