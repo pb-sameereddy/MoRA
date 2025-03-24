@@ -1,0 +1,9 @@
+peft-mora
+meta-math
+pub-med-cpt
+pub-med-eval
+pub-med-qa
+wandb
+*.log
+logs
+datasets

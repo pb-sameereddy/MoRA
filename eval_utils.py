@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 from training_utils import make_supervised_data_module
 from collections import namedtuple
 import transformers
@@ -7,12 +7,11 @@ from tqdm import tqdm
 from peft import AutoPeftModelForCausalLM
 
 def setup_data_args(
-    data_path, base_model, data_length=None, val_split=None, subset=None
+    data_path, is_chat, data_length=None, val_split=None, subset=None
 ):
     DataArgs = namedtuple(
         "DataArgs", ["data_path", "data_length", "val_split", "subset", "is_chat"]
     )
-    is_chat = "Llama-3" in base_model and "Instruct" in base_model
     return DataArgs(data_path, data_length, val_split, subset, is_chat)
 
 def load_data(
@@ -53,10 +52,9 @@ def load_data(
         use_fast=False,
     )
     tokenizer.pad_token_id = 2  # unk token, different from eos token
-
-    # Create data module and return datasets
-    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
     
+    data_args.is_chat = "Llama-3" in base_model and "Instruct" in base_model
+    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
     return data_module, tokenizer
 
 def extract_decision(label: str) -> str:
@@ -82,7 +80,7 @@ def load_model(ckpt_path: str) -> AutoPeftModelForCausalLM:
     """
     model = AutoPeftModelForCausalLM.from_pretrained(
         ckpt_path,
-        # device_map="auto",
+        device_map="auto",
     )
     return model
 
@@ -92,15 +90,14 @@ def load_model(ckpt_path: str) -> AutoPeftModelForCausalLM:
 # model = load_model(ckpt_path)
 
 def get_model_generations(
-    model, tokenizer, prompts: List[str], max_new_tokens: int = 512
+    model, tokenizer, prompts: List[str] | List[torch.Tensor], max_new_tokens: int = 512
 ) -> List[torch.Tensor]:
     """
-    Get predictions from the model for a list of prompts.
+    Get predictions from the model for a list of prompts one by one.
 
     Args:
         model: The model to get predictions from.
-        prompts: List of prompt strings to generate from.
-
+        prompts: List of prompt strings to generate from or list of input_ids tensors
     Returns:
         List[torch.Tensor]: The generated outputs from the model.
     """
@@ -108,14 +105,17 @@ def get_model_generations(
     device = model.device
 
     for prompt in tqdm(prompts, desc="Generating.."):
-        inputs = tokenizer(prompt, return_tensors="pt")
-        input_ids = inputs["input_ids"].to(device)
-        attention_mask = inputs["attention_mask"].to(device)
+        if isinstance(prompt, str):
+            inputs = tokenizer(prompt, return_tensors="pt")
+            input_ids = inputs["input_ids"].to(device)
+        elif isinstance(prompt, torch.Tensor):
+            input_ids = prompt.to(device)
+        else:
+            raise ValueError(f"Invalid prompt type: {type(prompt)}")
 
         with torch.no_grad():
             prediction = model.generate(
                 input_ids=input_ids,
-                attention_mask=attention_mask,
                 max_new_tokens=max_new_tokens,
                 pad_token_id=2,
             )
@@ -123,3 +123,43 @@ def get_model_generations(
         predictions.append(prediction.cpu().squeeze(0))
 
     return predictions
+
+
+def get_eval_accuracy(decisions_yhat: List[str], decisions_y: List[str]) -> float:
+    """
+    Get the evaluation accuracy for a given model and tokenized data.
+    """
+    assert len(decisions_yhat) == len(
+        decisions_y
+    ), f"Lengths are not equal: {len(decisions_yhat)} != {len(decisions_y)}"
+    return sum(1 for yhat, y in zip(decisions_yhat, decisions_y) if yhat == y) / len(
+        decisions_yhat
+    )
+
+
+def get_eval_loss(
+    model, tokenized_data: Dict[str, torch.Tensor], batch_size: int = 8
+) -> float:
+    """
+    Get the evaluation loss for a given model and tokenized data.
+
+    Args:
+        model: The model to get the loss from.
+        tokenized_data: The tokenized data to get the loss from.
+
+    Returns:
+        float: The average loss.
+        List[float]: The loss for each batch.
+    """
+    loss_by_batch = []
+    device = model.device
+    num_samples = len(tokenized_data["input_ids"])
+
+    for i in tqdm(range(0, num_samples, batch_size), desc="Calculating loss.."):
+        batch = {k: v[i : i + batch_size].to(device) for k, v in tokenized_data.items()}
+
+        with torch.no_grad():
+            outputs = model(**batch)
+            loss_by_batch.append(outputs.loss.mean().item())
+
+    return sum(loss_by_batch) / len(loss_by_batch), loss_by_batch

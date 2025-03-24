@@ -1,4 +1,5 @@
-# %%
+import pathlib
+import os
 import transformers
 from training_utils import make_supervised_data_module
 from collections import namedtuple
@@ -97,8 +98,10 @@ model.to(device)
 data_path = "qiaojin/PubMedQA"
 subset = args.subset
 ckpt_path = args.ckpt_path
-save_path = f"pub-med-eval/{args.run_name}.json"
+save_path = pathlib.Path(f"pub-med-eval-v2/{args.run_name}.json")
 print(f"Results will be saved to {save_path}")
+if not save_path.exists():
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
 # Load model
 print(f"Loading model from {ckpt_path}...")
@@ -121,35 +124,15 @@ data_module, tokenizer = load_data(
 data = data_module["train_dataset"]
 print(f"Loaded {len(data)} samples")
 
-# One of ['yes', 'no', 'maybe']
-decisions_y = [extract_decision(d["labels"]) for d in data]
-decisions_y
-
-# Setup input prompts
 prompts = [data[i]["input_ids"] for i in range(len(data))]
-# print(prompts[0])
 
 # Get model generations
 generations = get_model_generations(model, tokenizer, prompts)
 generations_str = tokenizer.batch_decode(generations, skip_special_tokens=True)
 
-
-decisions_yhat = []
-for g in generations_str:
-    try:
-        decision = extract_decision(g)
-        decisions_yhat.append(decision)
-    except Exception as e:
-        print(f"Error extracting decision from {g}")
-        decisions_yhat.append("EXTRACT_FAILURE")
-eval_accuracy = get_eval_accuracy(decisions_yhat, decisions_y)
-
 # Save all results
 results = {
-    "decisions_yhat": decisions_yhat,
-    "decisions_y": decisions_y,
     "generations_str": generations_str,
-    "eval_accuracy": eval_accuracy,
     "data_path": data_path,
     "subset": subset,
     "ckpt_path": ckpt_path,

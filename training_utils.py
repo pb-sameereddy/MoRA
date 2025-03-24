@@ -489,7 +489,7 @@ Below is an instruction that describes a task, paired with an input that provide
     "prompt_no_input": """
 <|start_header_id|>system<|end_header_id|>
 
-Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. <|eot_id|><|start_header_id|>user<|end_header_id|>
+Below is an instruction that describes a task, Write a response that appropriately completes the request. <|eot_id|><|start_header_id|>user<|end_header_id|>
 
 ### Instruction:\n{instruction}\n\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
@@ -589,27 +589,12 @@ class SupervisedDataset(Dataset):
                 list_data_dict = load_dataset("qiaojin/PubMedQA", data_args.subset)
             list_data_dict = list_data_dict["train"].to_list()
 
-        # else:
-        #     try:
-        #         data_path = data_path_map[data_path]
-        #     except:
-        #         data_path = data_path
-        #     try:
-        #         list_data_dict = jload(data_path)
-        #     except BaseException:
-        #         with open(data_path, "r") as f:
-        #             lines = f.readlines()
-        #         list_data_dict = [json.loads(line.strip()) for line in lines]
-
         # random sample the data
         random.seed(42)
         list_data_dict = random.sample(list_data_dict, len(list_data_dict))
         if data_args.data_length:
             list_data_dict = list_data_dict[: data_args.data_length]
 
-        # if "instruction" in list_data_dict[0]:
-        #     pass
-        # else:
 
         # convert to labels for prompt
         list_data_dict = [
@@ -621,13 +606,6 @@ class SupervisedDataset(Dataset):
             for data in list_data_dict
         ]
 
-        # print(
-        #     "(DATA LOG)",
-        #     list_data_dict[0],
-        #     list_data_dict[1],
-        #     list_data_dict[100],
-        #     end="\n\n",
-        # )
 
         # llama instruct or base format
         if data_args.is_chat:
@@ -718,7 +696,7 @@ class DataCollatorForSupervisedDataset(object):
     
 @dataclass
 class DataCollatorForCausalLM(object):
-    """Collate examples for causal language modeling."""
+    """Collate examples for causal language modeling. Was needed for eval loss to be computed in CPT, with no labels column."""
 
     def __init__(self, tokenizer: transformers.PreTrainedTokenizer, model_max_length: int):
         self.tokenizer = tokenizer
