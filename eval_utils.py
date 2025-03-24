@@ -59,7 +59,7 @@ def load_data(
 
 def extract_decision(label: str) -> str:
     try:
-        decision = label.split('Final Decision: ')[1].split('<|eot_id|>')[0].strip()
+        decision = label.split('Final Decision: ')[1].split('<|eot_id|>')[0].strip().lower()
         if decision not in ['yes', 'no', 'maybe']:
             print(f"Invalid decision: {decision}")
             return None
