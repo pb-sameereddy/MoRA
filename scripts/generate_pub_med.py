@@ -89,16 +89,10 @@ parser.add_argument(
 args = parser.parse_args()
 print(f"Args:\n{args}")
 
-# Load model
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Loading model from {args.ckpt_path}...")
-model = load_model(args.ckpt_path)
-model.to(device)
-
 data_path = "qiaojin/PubMedQA"
 subset = args.subset
 ckpt_path = args.ckpt_path
-save_path = pathlib.Path(f"pub-med-eval-v2/{args.run_name}.json")
+save_path = pathlib.Path(f"pub-med-eval/{args.run_name}.json")
 print(f"Results will be saved to {save_path}")
 if not save_path.exists():
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,7 +100,6 @@ if not save_path.exists():
 # Load model
 print(f"Loading model from {ckpt_path}...")
 model = load_model(ckpt_path)
-model.to(device)
 if args.eval_base_model:
     print("Disabling adapters...")
     model.disable_adapters()

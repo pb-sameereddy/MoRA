@@ -17,7 +17,7 @@ IDX=(3200 6400 9600)
 
 #PQA LABELED
 for idx in "${IDX[@]}"; do
-    RUN_NAME="cpt/${RUN_NAME_BASE}_ckpt${idx}" # e.g. cpt/lora_cpt_witheval_checkpoint-3200
+    RUN_NAME="cpt/${RUN_NAME_BASE}_ckpt${idx}_rerun2" # e.g. cpt/lora_cpt_witheval_checkpoint-3200
     python generate_pub_med_cpt_eval_completions.py --subset labeled --ckpt_path ${CKPT_DIR}/checkpoint-${idx} --run_name ${RUN_NAME} --data_length 1000
 done
 
