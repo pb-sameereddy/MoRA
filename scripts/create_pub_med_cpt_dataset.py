@@ -1,6 +1,8 @@
 # %%
 from datasets import load_dataset, Dataset
 from transformers import AutoTokenizer
+from pathlib import Path
+
 dataset = load_dataset("qiaojin/PubMedQA", "pqa_artificial", split="train").select(range(100))
 
 # %%
@@ -36,5 +38,8 @@ dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels
 # %%
 dataset = dataset.train_test_split(test_size=0.02)
 # save dataset
-dataset.save_to_disk('datasets/hf_pub_med_cpt')
+save_path = Path('datasets/hf_pub_med_cpt')
+if not save_path.exists():
+    save_path.mkdir(parents=True, exist_ok=True)
+dataset.save_to_disk(save_path)
 # %%

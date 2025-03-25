@@ -6,49 +6,7 @@ from collections import namedtuple
 from typing import Dict, List
 import torch
 from tqdm import tqdm
-from eval_utils import load_data, extract_decision, load_model, get_model_generations
-
-
-
-
-def get_eval_accuracy(decisions_yhat: List[str], decisions_y: List[str]) -> float:
-    """
-    Get the evaluation accuracy for a given model and tokenized data.
-    """
-    assert len(decisions_yhat) == len(
-        decisions_y
-    ), f"Lengths are not equal: {len(decisions_yhat)} != {len(decisions_y)}"
-    return sum(1 for yhat, y in zip(decisions_yhat, decisions_y) if yhat == y) / len(
-        decisions_yhat
-    )
-
-
-def get_eval_loss(
-    model, tokenized_data: Dict[str, torch.Tensor], batch_size: int = 8
-) -> float:
-    """
-    Get the evaluation loss for a given model and tokenized data.
-
-    Args:
-        model: The model to get the loss from.
-        tokenized_data: The tokenized data to get the loss from.
-
-    Returns:
-        float: The average loss.
-        List[float]: The loss for each batch.
-    """
-    loss_by_batch = []
-    device = model.device
-    num_samples = len(tokenized_data["input_ids"])
-
-    for i in tqdm(range(0, num_samples, batch_size), desc="Calculating loss.."):
-        batch = {k: v[i : i + batch_size].to(device) for k, v in tokenized_data.items()}
-
-        with torch.no_grad():
-            outputs = model(**batch)
-            loss_by_batch.append(outputs.loss.mean().item())
-
-    return sum(loss_by_batch) / len(loss_by_batch), loss_by_batch
+from eval_utils import load_data, extract_decision, load_model, get_model_generations, get_eval_accuracy, get_eval_loss
 
 # Load pubmed test set
 import json
